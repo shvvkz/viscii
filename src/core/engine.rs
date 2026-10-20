@@ -4,6 +4,7 @@ use image::{DynamicImage, RgbImage};
 
 const CHAR_RATIO: f64 = 0.5;
 const ASCII_PIXELS: &str = " .,:;irsXA253hMHGS#9B&@";
+// const ASCII_PIXELS: &str = "@&B9#SGHMh352AXssri;:,. ";
 
 fn optimal_resolution(video_width: u32, video_height: u32) -> Result<(u32, u32), AsciiVideoError> {
     let (cols, _) = terminal::size().map_err(|_| AsciiVideoError::ErrorVideoDimensionsNotFound)?;
@@ -111,7 +112,7 @@ fn rgb_to_ascii(rgb: &RgbImage) -> String {
     let width = rgb.width() as usize;
     let mut ascii = String::new();
 
-    for (i, pixel) in rgb.as_raw().chunks_exact(3).enumerate() {
+    for (i, pixel) in rgb.as_raw().as_chunks::<3>().0.iter().enumerate() {
         let c = pixel_to_ascii(pixel[0], pixel[1], pixel[2]);
 
         ascii.push(c);
