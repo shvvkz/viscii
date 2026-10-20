@@ -1,5 +1,5 @@
 [package]
-name = "video-to-ascii-art"
+name = "viscii"
 version = "0.1.0"
 edition = "2024"
 
