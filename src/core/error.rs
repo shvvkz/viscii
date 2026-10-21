@@ -1,7 +1,7 @@
 use std::fmt;
+use std::fmt::Debug;
 
-pub enum AsciiVideoError {
-    ErrorInit,
+pub enum VisciiError {
     ErrorInput,
     ErrorStream,
     ErrorCreateDecoder,
@@ -13,39 +13,42 @@ pub enum AsciiVideoError {
     ErrorFrameRateNotFound,
 }
 
-impl fmt::Display for AsciiVideoError {
+impl fmt::Display for VisciiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AsciiVideoError::ErrorInit => {
-                write!(f, "Invalid Init")
+            VisciiError::ErrorInput => {
+                write!(f, "invalid video input")
             }
-            AsciiVideoError::ErrorInput => {
-                write!(f, "invalid Input")
+            VisciiError::ErrorStream => {
+                write!(f, "Invalid video stream")
             }
-            AsciiVideoError::ErrorStream => {
-                write!(f, "Invalid Stream")
+            VisciiError::ErrorCreateDecoder => {
+                write!(f, "Failded to create decoder context")
             }
-            AsciiVideoError::ErrorCreateDecoder => {
-                write!(f, "Failded to created decoder context")
-            }
-            AsciiVideoError::ErrorVideoDecoder => {
+            VisciiError::ErrorVideoDecoder => {
                 write!(f, "Failed to create video decoder")
             }
-            AsciiVideoError::ErrorSendPacketDecoder => {
+            VisciiError::ErrorSendPacketDecoder => {
                 write!(f, "Failed to send packet to decoder")
             }
-            AsciiVideoError::ErrorCreateScalor => {
+            VisciiError::ErrorCreateScalor => {
                 write!(f, "Failed to create a scalor")
             }
-            AsciiVideoError::ErrorConvertFrameRGB => {
+            VisciiError::ErrorConvertFrameRGB => {
                 write!(f, "Failed to convert frame to RGB")
             }
-            AsciiVideoError::ErrorVideoDimensionsNotFound => {
+            VisciiError::ErrorVideoDimensionsNotFound => {
                 write!(f, "Failed to find video dimensions")
             }
-            AsciiVideoError::ErrorFrameRateNotFound => {
+            VisciiError::ErrorFrameRateNotFound => {
                 write!(f, "Failed to find frame rate")
             }
         }
+    }
+}
+
+impl Debug for VisciiError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }

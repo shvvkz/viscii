@@ -1,11 +1,10 @@
 mod core;
 
 use core::engine::extract_frames;
+use core::error::VisciiError;
 
-fn main() {
+fn main() -> Result<(), VisciiError> {
     loop {
-        if let Err(e) = extract_frames("videos/bad_apple.mp4") {
-            eprintln!("{}", e);
-        }
+        extract_frames("videos/bad_apple.mp4")?;
     }
 }
