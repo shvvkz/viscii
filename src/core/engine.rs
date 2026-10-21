@@ -16,12 +16,12 @@ struct AsciiPadding {
     up: String,
     right: String,
     down: String,
-    left: String
+    left: String,
 }
 
 fn optimal_resolution(video_width: u32, video_height: u32) -> Result<(u32, u32), AsciiVideoError> {
-
-    let (cols, rows) = terminal::size().map_err(|_| AsciiVideoError::ErrorVideoDimensionsNotFound)?;
+    let (cols, rows) =
+        terminal::size().map_err(|_| AsciiVideoError::ErrorVideoDimensionsNotFound)?;
 
     if video_width == 0 || video_height == 0 || cols == 0 || rows == 0 {
         return Err(AsciiVideoError::ErrorVideoDimensionsNotFound);
@@ -31,14 +31,11 @@ fn optimal_resolution(video_width: u32, video_height: u32) -> Result<(u32, u32),
     let ideal_height = cols as f64 / aspect_ratio * CHAR_RATIO;
 
     let (width, height) = if ideal_height > rows as f64 {
-
         let height = rows as u32;
         let width = (height as f64 * aspect_ratio / CHAR_RATIO) as u32;
 
         (width, height)
-
     } else {
-
         (cols as u32, ideal_height as u32)
     };
 
@@ -61,9 +58,8 @@ fn into_dynamic_image(rgb_frame: &ffmpeg_next::frame::Video) -> DynamicImage {
     image::DynamicImage::ImageRgb8(buffer)
 }
 
-
 fn open_video(path: &str) -> Result<ffmpeg_next::format::context::Input, AsciiVideoError> {
-    ffmpeg_next::init().map_err(|_| AsciiVideoError::ErrorInit)?;
+    ffmpeg_next::init().map_err(|_| AsciiVideoError::ErrorInput)?;
 
     ffmpeg_next::format::input(&std::path::Path::new(path)).map_err(|_| AsciiVideoError::ErrorInput)
 }
@@ -90,8 +86,7 @@ fn create_decoder(
 }
 
 fn get_video_info(decoder: &ffmpeg_next::decoder::Video) -> Result<VideoInfo, AsciiVideoError> {
-    let (width, height) = optimal_resolution(decoder.width(), decoder.height())
-        .map_err(|_| AsciiVideoError::ErrorInit)?;
+    let (width, height) = optimal_resolution(decoder.width(), decoder.height())?;
 
     let rate = decoder
         .frame_rate()
@@ -154,7 +149,7 @@ fn rgb_to_ascii(rgb: &RgbImage, ascii_padding: &AsciiPadding) -> String {
 fn process_image(
     decoded: &ffmpeg_next::frame::Video,
     scaler: &mut ffmpeg_next::software::scaling::Context,
-    ascii_padding: &AsciiPadding 
+    ascii_padding: &AsciiPadding,
 ) -> Result<String, AsciiVideoError> {
     let mut rgb_frame = ffmpeg_next::frame::Video::empty();
 
@@ -169,7 +164,6 @@ fn process_image(
     Ok(rgb_to_ascii(&rgb, ascii_padding))
 }
 
-
 fn display_image(ascii: &str, frame_rate: f64) {
     print!("{}", ascii);
 
@@ -180,7 +174,7 @@ fn receive_frames(
     decoder: &mut ffmpeg_next::decoder::Video,
     scaler: &mut ffmpeg_next::software::scaling::Context,
     video_info: &VideoInfo,
-    ascii_padding: &AsciiPadding
+    ascii_padding: &AsciiPadding,
 ) -> Result<(), AsciiVideoError> {
     let mut frame = ffmpeg_next::frame::Video::empty();
 
@@ -199,7 +193,7 @@ fn process_frames(
     decoder: &mut ffmpeg_next::decoder::Video,
     scaler: &mut ffmpeg_next::software::scaling::Context,
     video_info: &VideoInfo,
-    ascii_padding: &AsciiPadding
+    ascii_padding: &AsciiPadding,
 ) -> Result<(), AsciiVideoError> {
     for (stream, packet) in input.packets() {
         if stream.index() != stream_index {
@@ -222,8 +216,7 @@ fn process_frames(
     Ok(())
 }
 
-fn get_ascii_padding(info: &VideoInfo) -> AsciiPadding
-{
+fn get_ascii_padding(info: &VideoInfo) -> AsciiPadding {
     let mut padding_height_up = String::new();
     let mut padding_height_down = String::new();
     let mut padding_width_left = String::new();
@@ -231,33 +224,37 @@ fn get_ascii_padding(info: &VideoInfo) -> AsciiPadding
 
     let (cols, rows) = terminal::size().unwrap();
 
-    let nb_padding_height = (rows - info.height as u16)/2;
+    let nb_padding_height = (rows - info.height as u16) / 2;
     if nb_padding_height != 0 {
         let nb_padding_height_up = if nb_padding_height.is_multiple_of(2) {
             nb_padding_height - 1
         } else {
             nb_padding_height
         };
-        padding_height_up = std::iter::repeat_n("\n", nb_padding_height_up as usize).collect::<String>();
-        padding_height_down = std::iter::repeat_n("\n", nb_padding_height as usize).collect::<String>();
+        padding_height_up =
+            std::iter::repeat_n("\n", nb_padding_height_up as usize).collect::<String>();
+        padding_height_down =
+            std::iter::repeat_n("\n", nb_padding_height as usize).collect::<String>();
     }
 
-    let nb_padding_width = (cols - info.width as u16)/2;
+    let nb_padding_width = (cols - info.width as u16) / 2;
     if nb_padding_width != 0 {
         let nb_padding_width_left = if nb_padding_width.is_multiple_of(2) {
             nb_padding_width - 1
         } else {
             nb_padding_width
         };
-        padding_width_left = std::iter::repeat_n(" ", nb_padding_width_left as usize).collect::<String>();
-        padding_width_right = std::iter::repeat_n(" ", nb_padding_width as usize).collect::<String>();
+        padding_width_left =
+            std::iter::repeat_n(" ", nb_padding_width_left as usize).collect::<String>();
+        padding_width_right =
+            std::iter::repeat_n(" ", nb_padding_width as usize).collect::<String>();
     }
 
-    AsciiPadding{
+    AsciiPadding {
         up: padding_height_up,
-        right: padding_width_right, 
+        right: padding_width_right,
         down: padding_height_down,
-        left: padding_width_left
+        left: padding_width_left,
     }
 }
 
@@ -270,7 +267,7 @@ pub fn extract_frames(video_path: &str) -> Result<(), AsciiVideoError> {
 
     let mut scaler = create_scaler(&decoder, &info)?;
 
-    let ascii_padding = get_ascii_padding(&info); 
+    let ascii_padding = get_ascii_padding(&info);
 
     process_frames(
         &mut input,
@@ -278,7 +275,7 @@ pub fn extract_frames(video_path: &str) -> Result<(), AsciiVideoError> {
         &mut decoder,
         &mut scaler,
         &info,
-        &ascii_padding
+        &ascii_padding,
     )?;
 
     Ok(())

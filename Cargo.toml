@@ -1,6 +1,6 @@
 [package]
 name = "viscii"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A small Rust CLI that plays a video in your terminal using ASCII characters"
 license = "MIT"
