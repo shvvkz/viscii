@@ -1,12 +1,11 @@
 Output etc/demo.gif
 
 Set Shell "fish"
-Set Width 1000
-Set Height 450
-Set FontSize 14
+Set Width 800
+Set Height 400
+Set FontSize 8
 Set Padding 5
 Set Theme "Dracula"
-Set Framerate 30 
 Set PlaybackSpeed 1
 
 Type "./target/release/viscii"
