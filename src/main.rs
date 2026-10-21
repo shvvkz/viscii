@@ -2,10 +2,10 @@ mod core;
 
 use core::engine::extract_frames;
 
-fn main() {
+use crate::core::error::AsciiVideoError;
+
+fn main() -> Result<(), AsciiVideoError> {
     loop {
-        if let Err(e) = extract_frames("videos/bad_apple.mp4") {
-            eprintln!("{}", e);
-        }
+        extract_frames("bad_apple")?;
     }
 }

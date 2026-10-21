@@ -1,7 +1,7 @@
 use std::fmt;
+use std::fmt::Debug;
 
 pub enum AsciiVideoError {
-    ErrorInit,
     ErrorInput,
     ErrorStream,
     ErrorCreateDecoder,
@@ -16,17 +16,14 @@ pub enum AsciiVideoError {
 impl fmt::Display for AsciiVideoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AsciiVideoError::ErrorInit => {
-                write!(f, "Invalid Init")
-            }
             AsciiVideoError::ErrorInput => {
-                write!(f, "invalid Input")
+                write!(f, "invalid video input")
             }
             AsciiVideoError::ErrorStream => {
-                write!(f, "Invalid Stream")
+                write!(f, "Invalid video stream")
             }
             AsciiVideoError::ErrorCreateDecoder => {
-                write!(f, "Failded to created decoder context")
+                write!(f, "Failded to create decoder context")
             }
             AsciiVideoError::ErrorVideoDecoder => {
                 write!(f, "Failed to create video decoder")
@@ -47,5 +44,11 @@ impl fmt::Display for AsciiVideoError {
                 write!(f, "Failed to find frame rate")
             }
         }
+    }
+}
+
+impl Debug for AsciiVideoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
