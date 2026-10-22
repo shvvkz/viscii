@@ -1,4 +1,5 @@
-use super::error::AsciiVideoError;
+use super::cli::Cli;
+use super::error::VisciiError;
 use crossterm::terminal;
 use image::{DynamicImage, RgbImage};
 
@@ -6,17 +7,42 @@ const CHAR_RATIO: f64 = 0.5;
 const ASCII_PIXELS: &str = " .,:;irsXA253hMHGS#9B&@";
 // const ASCII_PIXELS: &str = "@&B9#SGHMh352AXssri;:,. ";
 
-fn optimal_resolution(video_width: u32, video_height: u32) -> Result<(u32, u32), AsciiVideoError> {
-    let (cols, _) = terminal::size().map_err(|_| AsciiVideoError::ErrorVideoDimensionsNotFound)?;
+struct VideoInfo {
+    width: u32,
+    height: u32,
+    frame_rate: f64,
+}
 
-    if video_width == 0 || video_height == 0 {
-        return Err(AsciiVideoError::ErrorVideoDimensionsNotFound);
+struct AsciiPadding {
+    up: String,
+    right: String,
+    down: String,
+    left: String,
+}
+
+fn optimal_resolution(video_width: u32, video_height: u32) -> Result<(u32, u32), VisciiError> {
+    let (cols, rows) = terminal::size().map_err(|_| VisciiError::ErrorVideoDimensionsNotFound)?;
+
+    if video_width == 0 || video_height == 0 || cols == 0 || rows == 0 {
+        return Err(VisciiError::ErrorVideoDimensionsNotFound);
     }
 
     let aspect_ratio = video_width as f64 / video_height as f64;
-    let ideal_height = (cols as f64 / aspect_ratio * CHAR_RATIO) as u32;
+    let ideal_height = cols as f64 / aspect_ratio * CHAR_RATIO;
 
-    Ok((cols as u32, ideal_height))
+    let (width, height) = if ideal_height > rows as f64 {
+        let height = rows as u32;
+        let width = (height as f64 * aspect_ratio / CHAR_RATIO) as u32;
+
+        (width, height)
+    } else {
+        (cols as u32, ideal_height as u32)
+    };
+
+    let width = width.max(1);
+    let height = height.max(1);
+
+    Ok((width, height))
 }
 
 fn into_dynamic_image(rgb_frame: &ffmpeg_next::frame::Video) -> DynamicImage {
@@ -32,49 +58,42 @@ fn into_dynamic_image(rgb_frame: &ffmpeg_next::frame::Video) -> DynamicImage {
     image::DynamicImage::ImageRgb8(buffer)
 }
 
-struct VideoInfo {
-    width: u32,
-    height: u32,
-    frame_rate: f64,
-}
+fn open_video(path: String) -> Result<ffmpeg_next::format::context::Input, VisciiError> {
+    ffmpeg_next::init().map_err(|_| VisciiError::ErrorInput)?;
 
-fn open_video(path: &str) -> Result<ffmpeg_next::format::context::Input, AsciiVideoError> {
-    ffmpeg_next::init().map_err(|_| AsciiVideoError::ErrorInit)?;
-
-    ffmpeg_next::format::input(&std::path::Path::new(path)).map_err(|_| AsciiVideoError::ErrorInput)
+    ffmpeg_next::format::input(&std::path::Path::new(&path)).map_err(|_| VisciiError::ErrorInput)
 }
 
 fn create_decoder(
     input: &ffmpeg_next::format::context::Input,
-) -> Result<(usize, ffmpeg_next::decoder::Video), AsciiVideoError> {
+) -> Result<(usize, ffmpeg_next::decoder::Video), VisciiError> {
     let stream = input
         .streams()
         .best(ffmpeg_next::media::Type::Video)
-        .ok_or(AsciiVideoError::ErrorStream)?;
+        .ok_or(VisciiError::ErrorStream)?;
 
     let stream_index = stream.index();
 
     let context = ffmpeg_next::codec::context::Context::from_parameters(stream.parameters())
-        .map_err(|_| AsciiVideoError::ErrorCreateDecoder)?;
+        .map_err(|_| VisciiError::ErrorCreateDecoder)?;
 
     let decoder = context
         .decoder()
         .video()
-        .map_err(|_| AsciiVideoError::ErrorVideoDecoder)?;
+        .map_err(|_| VisciiError::ErrorVideoDecoder)?;
 
     Ok((stream_index, decoder))
 }
 
-fn get_video_info(decoder: &ffmpeg_next::decoder::Video) -> Result<VideoInfo, AsciiVideoError> {
-    let (width, height) = optimal_resolution(decoder.width(), decoder.height())
-        .map_err(|_| AsciiVideoError::ErrorInit)?;
+fn get_video_info(decoder: &ffmpeg_next::decoder::Video) -> Result<VideoInfo, VisciiError> {
+    let (width, height) = optimal_resolution(decoder.width(), decoder.height())?;
 
     let rate = decoder
         .frame_rate()
-        .ok_or(AsciiVideoError::ErrorFrameRateNotFound)?;
+        .ok_or(VisciiError::ErrorFrameRateNotFound)?;
 
     if rate.denominator() == 0 || rate.numerator() <= 0 {
-        return Err(AsciiVideoError::ErrorFrameRateNotFound);
+        return Err(VisciiError::ErrorFrameRateNotFound);
     }
 
     let frame_rate = rate.numerator() as f64 / rate.denominator() as f64;
@@ -89,7 +108,7 @@ fn get_video_info(decoder: &ffmpeg_next::decoder::Video) -> Result<VideoInfo, As
 fn create_scaler(
     decoder: &ffmpeg_next::decoder::Video,
     info: &VideoInfo,
-) -> Result<ffmpeg_next::software::scaling::Context, AsciiVideoError> {
+) -> Result<ffmpeg_next::software::scaling::Context, VisciiError> {
     ffmpeg_next::software::scaling::Context::get(
         decoder.format(),
         decoder.width(),
@@ -99,7 +118,7 @@ fn create_scaler(
         info.height,
         ffmpeg_next::software::scaling::Flags::BILINEAR,
     )
-    .map_err(|_| AsciiVideoError::ErrorCreateScalor)
+    .map_err(|_| VisciiError::ErrorCreateScalor)
 }
 
 fn pixel_to_ascii(r: u8, g: u8, b: u8) -> char {
@@ -108,38 +127,41 @@ fn pixel_to_ascii(r: u8, g: u8, b: u8) -> char {
     ASCII_PIXELS.as_bytes()[index] as char
 }
 
-fn rgb_to_ascii(rgb: &RgbImage) -> String {
+fn rgb_to_ascii(rgb: &RgbImage, ascii_padding: &AsciiPadding) -> String {
     let width = rgb.width() as usize;
     let mut ascii = String::new();
-
+    ascii.push_str(&ascii_padding.up);
     for (i, pixel) in rgb.as_raw().as_chunks::<3>().0.iter().enumerate() {
         let c = pixel_to_ascii(pixel[0], pixel[1], pixel[2]);
 
         ascii.push(c);
 
         if (i + 1) % width == 0 {
+            ascii.push_str(&ascii_padding.right);
             ascii.push('\n');
+            ascii.push_str(&ascii_padding.left);
         }
     }
-
+    ascii.push_str(&ascii_padding.down);
     ascii
 }
 
 fn process_image(
     decoded: &ffmpeg_next::frame::Video,
     scaler: &mut ffmpeg_next::software::scaling::Context,
-) -> Result<String, AsciiVideoError> {
+    ascii_padding: &AsciiPadding,
+) -> Result<String, VisciiError> {
     let mut rgb_frame = ffmpeg_next::frame::Video::empty();
 
     scaler
         .run(decoded, &mut rgb_frame)
-        .map_err(|_| AsciiVideoError::ErrorConvertFrameRGB)?;
+        .map_err(|_| VisciiError::ErrorConvertFrameRGB)?;
 
     let image = into_dynamic_image(&rgb_frame);
 
     let rgb = image.to_rgb8();
 
-    Ok(rgb_to_ascii(&rgb))
+    Ok(rgb_to_ascii(&rgb, ascii_padding))
 }
 
 fn display_image(ascii: &str, frame_rate: f64) {
@@ -151,14 +173,15 @@ fn display_image(ascii: &str, frame_rate: f64) {
 fn receive_frames(
     decoder: &mut ffmpeg_next::decoder::Video,
     scaler: &mut ffmpeg_next::software::scaling::Context,
-    frame_rate: f64,
-) -> Result<(), AsciiVideoError> {
+    video_info: &VideoInfo,
+    ascii_padding: &AsciiPadding,
+) -> Result<(), VisciiError> {
     let mut frame = ffmpeg_next::frame::Video::empty();
 
     while decoder.receive_frame(&mut frame).is_ok() {
-        let ascii = process_image(&frame, scaler)?;
+        let ascii = process_image(&frame, scaler, ascii_padding)?;
 
-        display_image(&ascii, frame_rate);
+        display_image(&ascii, video_info.frame_rate);
     }
 
     Ok(())
@@ -169,8 +192,9 @@ fn process_frames(
     stream_index: usize,
     decoder: &mut ffmpeg_next::decoder::Video,
     scaler: &mut ffmpeg_next::software::scaling::Context,
-    frame_rate: f64,
-) -> Result<(), AsciiVideoError> {
+    video_info: &VideoInfo,
+    ascii_padding: &AsciiPadding,
+) -> Result<(), VisciiError> {
     for (stream, packet) in input.packets() {
         if stream.index() != stream_index {
             continue;
@@ -178,22 +202,64 @@ fn process_frames(
 
         decoder
             .send_packet(&packet)
-            .map_err(|_| AsciiVideoError::ErrorSendPacketDecoder)?;
+            .map_err(|_| VisciiError::ErrorSendPacketDecoder)?;
 
-        receive_frames(decoder, scaler, frame_rate)?;
+        receive_frames(decoder, scaler, video_info, ascii_padding)?;
     }
 
     decoder
         .send_eof()
-        .map_err(|_| AsciiVideoError::ErrorSendPacketDecoder)?;
+        .map_err(|_| VisciiError::ErrorSendPacketDecoder)?;
 
-    receive_frames(decoder, scaler, frame_rate)?;
+    receive_frames(decoder, scaler, video_info, ascii_padding)?;
 
     Ok(())
 }
 
-pub fn extract_frames(video_path: &str) -> Result<(), AsciiVideoError> {
-    let mut input = open_video(video_path)?;
+fn get_ascii_padding(info: &VideoInfo) -> AsciiPadding {
+    let mut padding_height_up = String::new();
+    let mut padding_height_down = String::new();
+    let mut padding_width_left = String::new();
+    let mut padding_width_right = String::new();
+
+    let (cols, rows) = terminal::size().unwrap();
+
+    let nb_padding_height = (rows - info.height as u16) / 2;
+    if nb_padding_height != 0 {
+        let nb_padding_height_up = if nb_padding_height.is_multiple_of(2) {
+            nb_padding_height - 1
+        } else {
+            nb_padding_height
+        };
+        padding_height_up =
+            std::iter::repeat_n("\n", nb_padding_height_up as usize).collect::<String>();
+        padding_height_down =
+            std::iter::repeat_n("\n", nb_padding_height as usize).collect::<String>();
+    }
+
+    let nb_padding_width = (cols - info.width as u16) / 2;
+    if nb_padding_width != 0 {
+        let nb_padding_width_left = if nb_padding_width.is_multiple_of(2) {
+            nb_padding_width - 1
+        } else {
+            nb_padding_width
+        };
+        padding_width_left =
+            std::iter::repeat_n(" ", nb_padding_width_left as usize).collect::<String>();
+        padding_width_right =
+            std::iter::repeat_n(" ", nb_padding_width as usize).collect::<String>();
+    }
+
+    AsciiPadding {
+        up: padding_height_up,
+        right: padding_width_right,
+        down: padding_height_down,
+        left: padding_width_left,
+    }
+}
+
+pub fn extract_frames(args: &Cli) -> Result<(), VisciiError> {
+    let mut input = open_video(args.video_path.clone())?;
 
     let (stream_index, mut decoder) = create_decoder(&input)?;
 
@@ -201,12 +267,15 @@ pub fn extract_frames(video_path: &str) -> Result<(), AsciiVideoError> {
 
     let mut scaler = create_scaler(&decoder, &info)?;
 
+    let ascii_padding = get_ascii_padding(&info);
+
     process_frames(
         &mut input,
         stream_index,
         &mut decoder,
         &mut scaler,
-        info.frame_rate,
+        &info,
+        &ascii_padding,
     )?;
 
     Ok(())

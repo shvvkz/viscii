@@ -1,11 +1,14 @@
 mod core;
 
+use core::cli::Cli;
 use core::engine::extract_frames;
+use core::error::VisciiError;
 
-fn main() {
+use clap::Parser;
+
+fn main() -> Result<(), VisciiError> {
+    let args = Cli::parse();
     loop {
-        if let Err(e) = extract_frames("videos/bad_apple.mp4") {
-            eprintln!("{}", e);
-        }
+        extract_frames(&args)?;
     }
 }
