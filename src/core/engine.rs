@@ -1,3 +1,4 @@
+use super::cli::Cli;
 use super::error::VisciiError;
 use crossterm::terminal;
 use image::{DynamicImage, RgbImage};
@@ -57,10 +58,10 @@ fn into_dynamic_image(rgb_frame: &ffmpeg_next::frame::Video) -> DynamicImage {
     image::DynamicImage::ImageRgb8(buffer)
 }
 
-fn open_video(path: &str) -> Result<ffmpeg_next::format::context::Input, VisciiError> {
+fn open_video(path: String) -> Result<ffmpeg_next::format::context::Input, VisciiError> {
     ffmpeg_next::init().map_err(|_| VisciiError::ErrorInput)?;
 
-    ffmpeg_next::format::input(&std::path::Path::new(path)).map_err(|_| VisciiError::ErrorInput)
+    ffmpeg_next::format::input(&std::path::Path::new(&path)).map_err(|_| VisciiError::ErrorInput)
 }
 
 fn create_decoder(
@@ -257,8 +258,8 @@ fn get_ascii_padding(info: &VideoInfo) -> AsciiPadding {
     }
 }
 
-pub fn extract_frames(video_path: &str) -> Result<(), VisciiError> {
-    let mut input = open_video(video_path)?;
+pub fn extract_frames(args: &Cli) -> Result<(), VisciiError> {
+    let mut input = open_video(args.video_path.clone())?;
 
     let (stream_index, mut decoder) = create_decoder(&input)?;
 
