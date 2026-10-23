@@ -5,7 +5,7 @@ use image::{DynamicImage, RgbImage};
 
 const CHAR_RATIO: f64 = 0.5;
 const ASCII_PIXELS: &str = " .,:;irsXA253hMHGS#9B&@";
-// const ASCII_PIXELS: &str = "@&B9#SGHMh352AXssri;:,. ";
+const ASCII_PIXELS_INVERTED: &str = "@&B9#SGHMh352AXssri;:,. ";
 
 struct VideoInfo {
     width: u32,
@@ -121,18 +121,18 @@ fn create_scaler(
     .map_err(|_| VisciiError::ErrorCreateScalor)
 }
 
-fn pixel_to_ascii(r: u8, g: u8, b: u8) -> char {
+fn pixel_to_ascii(r: u8, g: u8, b: u8, ascii_chars: &str) -> char {
     let gray = (0.3 * r as f32 + 0.6 * g as f32 + 0.1 * b as f32) as u8;
-    let index = (gray as usize * (ASCII_PIXELS.len() - 1)) / 255;
-    ASCII_PIXELS.as_bytes()[index] as char
+    let index = (gray as usize * (ascii_chars.len() - 1)) / 255;
+    ascii_chars.as_bytes()[index] as char
 }
 
-fn rgb_to_ascii(rgb: &RgbImage, ascii_padding: &AsciiPadding) -> String {
+fn rgb_to_ascii(rgb: &RgbImage, ascii_padding: &AsciiPadding, ascii_chars: &str) -> String {
     let width = rgb.width() as usize;
     let mut ascii = String::new();
     ascii.push_str(&ascii_padding.up);
     for (i, pixel) in rgb.as_raw().as_chunks::<3>().0.iter().enumerate() {
-        let c = pixel_to_ascii(pixel[0], pixel[1], pixel[2]);
+        let c = pixel_to_ascii(pixel[0], pixel[1], pixel[2], ascii_chars);
 
         ascii.push(c);
 
@@ -150,6 +150,7 @@ fn process_image(
     decoded: &ffmpeg_next::frame::Video,
     scaler: &mut ffmpeg_next::software::scaling::Context,
     ascii_padding: &AsciiPadding,
+    ascii_chars: &str,
 ) -> Result<String, VisciiError> {
     let mut rgb_frame = ffmpeg_next::frame::Video::empty();
 
@@ -161,7 +162,7 @@ fn process_image(
 
     let rgb = image.to_rgb8();
 
-    Ok(rgb_to_ascii(&rgb, ascii_padding))
+    Ok(rgb_to_ascii(&rgb, ascii_padding, ascii_chars))
 }
 
 fn display_image(ascii: &str, frame_rate: f64) {
@@ -175,11 +176,12 @@ fn receive_frames(
     scaler: &mut ffmpeg_next::software::scaling::Context,
     video_info: &VideoInfo,
     ascii_padding: &AsciiPadding,
+    ascii_chars: &str,
 ) -> Result<(), VisciiError> {
     let mut frame = ffmpeg_next::frame::Video::empty();
 
     while decoder.receive_frame(&mut frame).is_ok() {
-        let ascii = process_image(&frame, scaler, ascii_padding)?;
+        let ascii = process_image(&frame, scaler, ascii_padding, ascii_chars)?;
 
         display_image(&ascii, video_info.frame_rate);
     }
@@ -194,7 +196,14 @@ fn process_frames(
     scaler: &mut ffmpeg_next::software::scaling::Context,
     video_info: &VideoInfo,
     ascii_padding: &AsciiPadding,
+    args: &Cli,
 ) -> Result<(), VisciiError> {
+    let ascii_chars_to_use = if args.inverted_grayscale {
+        ASCII_PIXELS_INVERTED
+    } else {
+        ASCII_PIXELS
+    };
+
     for (stream, packet) in input.packets() {
         if stream.index() != stream_index {
             continue;
@@ -204,14 +213,26 @@ fn process_frames(
             .send_packet(&packet)
             .map_err(|_| VisciiError::ErrorSendPacketDecoder)?;
 
-        receive_frames(decoder, scaler, video_info, ascii_padding)?;
+        receive_frames(
+            decoder,
+            scaler,
+            video_info,
+            ascii_padding,
+            ascii_chars_to_use,
+        )?;
     }
 
     decoder
         .send_eof()
         .map_err(|_| VisciiError::ErrorSendPacketDecoder)?;
 
-    receive_frames(decoder, scaler, video_info, ascii_padding)?;
+    receive_frames(
+        decoder,
+        scaler,
+        video_info,
+        ascii_padding,
+        ascii_chars_to_use,
+    )?;
 
     Ok(())
 }
@@ -276,6 +297,7 @@ pub fn extract_frames(args: &Cli) -> Result<(), VisciiError> {
         &mut scaler,
         &info,
         &ascii_padding,
+        args,
     )?;
 
     Ok(())
